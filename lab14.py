@@ -135,6 +135,29 @@ def find_minimum_by_quadratic_approximation(f, interval, tol):
             return res
         points[2] = vertex # replace point with max y with vertex
 
+def find_first_derivative(f, x, delta):
+    return 0.5 * float(f(x + delta) - f(x - delta)) / delta
+
+def find_second_derivative(f, x, delta):
+    r = float(f(x + delta) - 2 * f(x) + f(x - delta)) / (delta * delta)
+    assert r, '2nd derivative is %.10f, f(x+delta)=%f,f(x)=%f,f(x-delta)=%f,delta=%.10f,delta*delta=%.10f' % (r, f(x + delta), f(x), f(x-delta), delta, delta*delta)
+    return r
+
+def find_minimum_by_newton_method(f, interval, tol):
+    x0, x1 = interval
+    x1 = x0 + GOLDEN_SECTION_COEF * (x1 - x0)
+    res = OptimizationResult()
+    delta = tol / 10.0
+
+    while True:
+        res.register_iteration()
+        res.add_point((x1, f(x1)))
+        x0 = x1
+        x1 = x0 - find_first_derivative(f, x0, delta) / find_second_derivative(f, x0, delta)
+        if abs(x1 - x0) <= tol or x1 < interval[0] or x1 > interval[1]:
+            res.solution = (x1, f(x1))
+            return res
+
 def get_func_points(f, interval, points_n=100):
     x = np.linspace(interval[0], interval[1], num=points_n)
     return (x, np.vectorize(f)(x))
@@ -182,6 +205,7 @@ if __name__ == '__main__':
         'bitwise': find_minimum_by_bitwise_search,
         'golden_section': find_minimum_by_golden_section_search,
         'quadratic_approximation': find_minimum_by_quadratic_approximation,
+        'newton': find_minimum_by_newton_method,
         'library': find_minimum_by_library
     }
 
@@ -200,5 +224,6 @@ if __name__ == '__main__':
 
     #visualize_solution(results[0]['bitwise'], draw_type='arrows')
     #visualize_solution(results[0]['golden_section'], draw_type='points')
-    visualize_solution(results[0]['quadratic_approximation'], draw_type='points')
+    #visualize_solution(results[0]['quadratic_approximation'], draw_type='points')
+    visualize_solution(results[0]['newton'], draw_type='points')
 
