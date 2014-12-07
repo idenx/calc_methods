@@ -185,6 +185,22 @@ def visualize_solution(r, draw_type=None):
             plot.draw_points(r.points, color='black', markersize=10.0, marker='+')
     plot.show()
 
+class Cached1ArgFunction(object):
+    def __init__(self, func):
+        self._func = func
+        self._cache = {}
+    def __call__(self, arg):
+        try:
+            hash(arg)
+        except TypeError:
+            return self._func(arg)
+        if arg in self._cache:
+            debug('cache hit for arg %s' % arg)
+            return self._cache[arg]
+        r = self._func(arg)
+        self._cache[arg] = r
+        return r
+
 class CountingFunction(object):
     def __init__(self, func):
         self._calls_n = 0
@@ -200,7 +216,7 @@ if __name__ == '__main__':
     INTERVAL = [1,2]
     FUNC = lambda x: np.arctan(x ** 3 - 5 * x + 1) + (x * x / (3 * x - 2)) ** np.sqrt(3)
 
-    tolerances = (0.01, 0.0001, 0.000001)
+    tolerances = (0.000001,)#(0.01, 0.0001, 0.000001)
     methods = {
         'bitwise': find_minimum_by_bitwise_search,
         'golden_section': find_minimum_by_golden_section_search,
@@ -215,7 +231,8 @@ if __name__ == '__main__':
         res = {}
         for method, optimizer in methods.iteritems():
             f = CountingFunction(FUNC)
-            r = optimizer(f, INTERVAL, tol=tol)
+            cached_f = Cached1ArgFunction(f)
+            r = optimizer(cached_f, INTERVAL, tol=tol)
             print('%s: x_min = %.7f, y_min = %.7f, tol=%.7f, iter_n=%d, fev_n=%d' % (method, r.solution[0], r.solution[1],
                   tol, r.iterations_n, f.calls_count))
             res[method] = r
@@ -225,5 +242,5 @@ if __name__ == '__main__':
     #visualize_solution(results[0]['bitwise'], draw_type='arrows')
     #visualize_solution(results[0]['golden_section'], draw_type='points')
     #visualize_solution(results[0]['quadratic_approximation'], draw_type='points')
-    visualize_solution(results[0]['newton'], draw_type='points')
+    #visualize_solution(results[0]['newton'], draw_type='points')
 
