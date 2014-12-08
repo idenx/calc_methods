@@ -8,6 +8,7 @@ from matplotlib import cm
 import math
 from mpl_toolkits.mplot3d import Axes3D, proj3d
 from matplotlib.colors import LogNorm
+from scipy.optimize import minimize
 
 class Interval(object):
     def __init__(self, start, end):
@@ -177,14 +178,13 @@ def plot_function_and_solution(func, area, first_point, solution, meshgrid):
                  arrowprops=dict(facecolor='blue', shrink=0.05))
 
 def plot_iterations(iters, meshgrid):
-    plt.tight_layout()
     for i, tri in iters:
         print('Iteration #%d: [(%.3f,%.3f,%.3f),(%.3f,%.3f,%.3f),(%.3f,%.3f,%.2f)]' % (i,
               tri[0][0][0], tri[0][0][1], tri[0][1],
               tri[1][0][0], tri[1][0][1], tri[1][1],
               tri[2][0][0], tri[2][0][1], tri[2][1]))
     cols_n = 3
-    rows_n = int(math.ceil(len(ret_tris) / cols_n))
+    rows_n = int(math.ceil(len(iters) / cols_n))
 
     fig, axs = plt.subplots(nrows=rows_n, ncols=cols_n)
     axs = axs.flatten()
@@ -225,30 +225,61 @@ class CountingFunction(object):
     def reset_counter(self):
         self._calls_n = 0
 
+
+def plot_function_3d(func, area, num=100):
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')
+
+    X, Y = np.meshgrid(
+                       np.linspace(*area.x.to_tuple(), num=num),
+                       np.linspace(*area.y.to_tuple(), num=num))
+    Z = func([X, Y])
+    ax.plot_surface(X, Y, Z, rstride=8, cstride=8, alpha=0.3)
+#    cset = ax.contour(X, Y, Z, zdir='z', offset=0, stride=0.5, cmap=cm.coolwarm)
+
+    ax.set_xlabel('X')
+    ax.set_xlim(*area.x.to_tuple())
+    ax.set_ylabel('Y')
+    ax.set_ylim(*area.y.to_tuple())
+
+    plt.show()
+
+def minimize_function(func, area, first_point, tol, iters, draw_func=False, draw_func_and_solution=True, draw_iters=True):
+    meshgrid = get_function_meshgrid(func, area, num=300)
+    func = CountingFunction(func)
+    x, fx, its, ret_tris = nelder_mead(func, x0=np.array(first_point), tol=tol, iter_returns=iters)
+    solution = (x[0], x[1], fx)
+    print('Solution by our impl (%.3f, %.3f, %.3f) was found for %d iterations and %d func evaluations' % (solution[0], solution[1], solution[2], its, func.calls_count))
+
+    # calc by library
+    func.reset_counter()
+    res = minimize(func, x0=np.array(first_point), method='Nelder-Mead')
+    print('Solution by library function %.3f, %.3f, %.3f) was found for %d iterations and %d func evaluations' % (res.x[0], res.x[1], res.fun, res.nit, func.calls_count))
+
+    if draw_func:
+        plot_function_3d(func, area, num=100)
+    if draw_func_and_solution:
+        plot_function_and_solution(func, area, first_point, solution, meshgrid)
+    if draw_iters:
+        plot_iterations(list(zip(iters, ret_tris)), meshgrid)
+
 if __name__ == '__main__':
     def FUNCTION(x):
         x1, x2 = x[0], x[1]
         return 6 * x1 ** 2 + 3 * x2 ** 2 - 4 * x1 * x2 + 4 * math.sqrt(5) * x1 + 8 * math.sqrt(5) * x2 + 22
+    def FUNCTION2(x):
+        x1, x2 = x[0], x[1]
+        return x1 ** 2 + x2 + 2 / (x1 ** 2 * x2 ** 2 + 0.1) - 3 * np.arctan(2 * x1) + 3 * x2
+        #return x1 ** 2 + x2 + 2 / (x1 * x2) - 3 * np.arctan(2 * x1) + 3 * x2
+
     func = CountingFunction(FUNCTION)
     AREA = Area2d(Interval(-7, 4), Interval(-10, 2))
+    AREA2 = Area2d(Interval(-2, 6), Interval(-2, 6))
     FIRST_POINT = (-2, 1)
+    FIRST_POINT2 = (3, 3)
     TOLERANCE = 1e-6
-
-    # calc by our impl
-    func.reset_counter()
-    meshgrid = get_function_meshgrid(func, AREA, num=300)
+    TOLERANCE2 = 1e-4
     ITERS = [0, 1, 5, 10, 13, 14, 15, 16, 17, 20, 30, 50]
-    func = CountingFunction(FUNCTION)
-    x, fx, its, ret_tris = nelder_mead(func, x0=np.array(FIRST_POINT), tol=TOLERANCE, iter_returns=ITERS)
-    solution = (x[0], x[1], fx)
-    print('Solution by our impl (%.6f, %.6f, %.6f) was found for %d iterations and %d func evaluations' % (solution[0], solution[1], solution[2], its, func.calls_count))
 
-    # calc by library
-    from scipy.optimize import minimize
-    func.reset_counter()
-    res = minimize(func, x0=np.array(FIRST_POINT), method='Nelder-Mead')
-    print('Solution by library function %.6f, %.6f, %.6f) was found for %d iterations and %d func evaluations' % (res.x[0], res.x[1], res.fun, res.nit, func.calls_count))
-
-    #plot_function_and_solution(func, AREA, FIRST_POINT, solution, meshgrid)
-    #plot_iterations(list(zip(ITERS, ret_tris)), meshgrid)
-
+    minimize_function(FUNCTION, AREA, FIRST_POINT, TOLERANCE, ITERS)
+    minimize_function(FUNCTION2, AREA2, FIRST_POINT2, TOLERANCE2, ITERS, draw_func=True)
