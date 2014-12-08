@@ -22,77 +22,19 @@ class Area2d(object):
         self.y = y_interval
 
 def nelder_mead(f, x0, method="ANMS", tol=1e-8, maxit=1e4, iter_returns=None):
-    """
-    This is a python implementation of the nelder-mead algorithm, the
-    goal is to use numba to attempt to speed it up in a simple manner.
-
-    Parameters
-    ----------
-
-    f : callable
-        Function to minimize
-    x0 : scalar(float) or array_like(float, ndim=1)
-        The initial guess for minimizing
-    method : string or tuple(floats)
-        If a string, should specify ANMS or NMS then will use specific
-        parameter values, but also can pass in a tuple of parameters in
-        order (alpha, beta, gamma, delta), which are the reflection,
-        expansion, contraction, and contraction parameters
-    tol : scalar(float)
-        The tolerance level to achieve convergence
-    maxit : scalar(int)
-        The maximimum number of iterations allowed
-
-
-    References :
-
-    Nelder, J. A. and R. Mead, "A Simplex Method for Function
-    Minimization." 1965. Vol 7(4). Computer Journal
-
-    F. Gao, L. Han, "Implementing the Nelder-Mead simplex algorithm with
-    adaptive parameters", Comput. Optim. Appl.,
-
-    http://www.brnt.eu/phd/node10.html#SECTION00622200000000000000
-
-
-    TODO:
-      * Check to see whether it works with numba
-      * Check to see whether we can use an array instead of a list of
-      tuples
-      * Write some tests
-      * Implement in Julia:
-      https://github.com/JuliaOpt/Optim.jl/blob/master/src/nelder_mead.jl
-    """
-    #-----------------------------------------------------------------#
-    # Set some parameter values
-    #-----------------------------------------------------------------#
     init_guess = x0
     fx0 = f(x0)
-    dist = 10.
+    dist = float('inf')
     curr_it = 0
 
-    # Get the number of dimensions we are optimizing
-    n = np.size(x0)
+    n = np.size(x0) # dimensions count
 
-    # Will use the Adaptive Nelder-Mead Simplex paramters by default
-    if method is "ANMS":
-        alpha = 1.
-        beta = 1. + (2./n)
-        gamma = .75 - 1./(2.*n)
-        delta = 1. - (1./n)
-    # Otherwise can use standard parameters
-    elif method is "NMS":
-        alpha = 1.
-        beta = 2.
-        gamma = .5
-        delta = .5
-    elif type(method) is tuple:
-        alpha, beta, gamma, delta = method
+    alpha = 1.0
+    beta = 1.0 + (2.0 / n)
+    gamma = 0.75 - 1.0 / (2.0 * n)
+    delta = 1.0 - (1.0 / n)
 
-
-    #-----------------------------------------------------------------#
     # Create the simplex points and do the initial sort
-    #-----------------------------------------------------------------#
     simplex_points = np.empty((n+1, n))
 
     pt_fval = [(x0, fx0)]
@@ -100,43 +42,34 @@ def nelder_mead(f, x0, method="ANMS", tol=1e-8, maxit=1e4, iter_returns=None):
     simplex_points[0, :] = x0
 
     for ind, elem in enumerate(x0):
-
-        if np.abs(elem) < 1e-14:
-            curr_tau = 0.00025
-        else:
-            curr_tau = 0.05
-
+        curr_tau = 0.05
         curr_point = np.squeeze(np.eye(1, M=n, k=ind)*curr_tau + x0)
-
         simplex_points[ind, :] = curr_point
         pt_fval.append((curr_point, f(curr_point)))
-        
+
     if iter_returns is not None:
         ret_points = []
     else:
         ret_points = None
 
 
-    #-----------------------------------------------------------------#
     # The Core of The Nelder-Mead Algorithm
-    #-----------------------------------------------------------------#
     while dist>tol and curr_it<maxit:
 
         # 1: Sort and find new center point (excluding worst point)
         pt_fval = sorted(pt_fval, key=lambda v: v[1])
-        xbar = x0*0
+        xbar = x0 * 0
 
         for i in range(n):
             xbar = xbar + (pt_fval[i][0])/(n)
-            
+
         if iter_returns is not None and curr_it in iter_returns:
             ret_points.append(pt_fval)
 
         # Define useful variables
-        x1, f1 = pt_fval[0]
-        xn, fn = pt_fval[n-1]
-        xnp1, fnp1 = pt_fval[n]
-
+        x1, f1 = pt_fval[0] # lowest point
+        xn, fn = pt_fval[n-1] # point between lowest and highest
+        xnp1, fnp1 = pt_fval[n] # highest (worst) point
 
         # 2: Reflect
         xr = xbar + alpha*(xbar - pt_fval[-1][0])
@@ -207,31 +140,7 @@ def nelder_mead(f, x0, method="ANMS", tol=1e-8, maxit=1e4, iter_returns=None):
     else:
         return x1, f1, curr_it
 
-def plot_function_3d(func, area):
-    fig = plt.figure()
-    ax = fig.gca(projection='3d')
-
-    X, Y = np.meshgrid(
-                       np.linspace(*area.x.to_tuple(), num=100),
-                       np.linspace(*area.y.to_tuple(), num=100))
-    Z = func([X, Y])
-    ax.plot_surface(X, Y, Z, rstride=8, cstride=8, alpha=0.3)
-    cset = ax.contour(X, Y, Z, zdir='z', offset=0, stride=1, cmap=cm.coolwarm)
-
-    ax.set_xlabel('X')
-    ax.set_xlim(*area.x.to_tuple())
-    ax.set_ylabel('Y')
-    ax.set_ylim(*area.y.to_tuple())
-
-    plt.show()
-
-def plot_from_net(func, area, first_point):
-    x = np.linspace(*area.x.to_tuple(), num=200)
-    y = np.linspace(*area.y.to_tuple(), num=200)
-
-    X, Y = np.meshgrid(x, y)
-    Z = func([X, Y])
-
+def plot_function_and_solution(func, area, first_point, solution, meshgrid):
     fig = plt.figure(figsize=(14, 8))
     ax1 = fig.add_subplot(121)
     ax2 = fig.add_subplot(122, projection="3d")
@@ -241,66 +150,105 @@ def plot_from_net(func, area, first_point):
     # Color mesh
     ax1.set_axis_bgcolor("white")
 #    ax1.pcolormesh(X, Y, Z, cmap=cm.jet, norm=LogNorm())
-    ax1.contour(X, Y, Z, zdir='z', offset=0, stride=0.1, cmap=cm.coolwarm)
+    ax1.contour(*meshgrid, zdir='z', offset=0, stride=0.1, cmap=cm.coolwarm)
     ax1.scatter(*first_point, color="k")
     ax1.annotate('First Point', xy=first_point, xytext=(-0.5, 1.25),
                  arrowprops=dict(facecolor='black', shrink=0.05))
+    ax1.scatter(solution[0], solution[1], color="g")
+    ax1.annotate('Solution', xy=(solution[0], solution[1]), xytext=(-1, -3),
+                 arrowprops=dict(facecolor='blue', shrink=0.05))
 
     # Surface plot
     ax2.set_axis_bgcolor("white")
-    ax2.plot_surface(X, Y, Z, norm = LogNorm(), cmap=cm.jet, linewidth=1)
-
+    ax2.plot_surface(*meshgrid, norm = LogNorm(), cmap=cm.jet, linewidth=1)
 
     first_point_3d = (first_point[0], first_point[1], func(first_point))
 
     ax2.view_init(azim=65, elev=25)
     ax2.scatter(*first_point_3d, color="k")
     xa, ya, _ = proj3d.proj_transform(first_point_3d[0], first_point_3d[1], first_point_3d[2], ax2.get_proj())
-    ax2.annotate("First Point", xy = (xa, ya), xytext = (-20, 30),
+    ax2.annotate("First Point", xy = (xa, ya), xytext = (20, 120),
                  textcoords = 'offset points', ha = 'right', va = 'bottom',
                  arrowprops=dict(facecolor='black', shrink=0.05))
+    ax2.scatter(*solution, color="k")
+    xa, ya, _ = proj3d.proj_transform(solution[0], solution[1], solution[2], ax2.get_proj())
+    ax2.annotate("Solution", xy = (xa, ya), xytext = (0, 100),
+                 textcoords = 'offset points', ha = 'right', va = 'bottom',
+                 arrowprops=dict(facecolor='blue', shrink=0.05))
 
+def plot_iterations(iters, meshgrid):
     plt.tight_layout()
-#    plt.show()
-
-    iterstosee = [0, 1, 2, 3, 5, 6, 7, 9, 10, 13, 17, 20, 25, 30, 50, 75, 90, 95]
-    x, fx, its, ret_tris = nelder_mead(func, x0=np.array(first_point), tol=1e-12, iter_returns=iterstosee)
-    print('Solution (%.6f, %.6f, %.6f) was found for %d iterations' % (x[0], x[1], fx, its))
-    for i, tri in zip(iterstosee, ret_tris):
+    for i, tri in iters:
         print('Iteration #%d: [(%.3f,%.3f,%.3f),(%.3f,%.3f,%.3f),(%.3f,%.3f,%.2f)]' % (i,
               tri[0][0][0], tri[0][0][1], tri[0][1],
               tri[1][0][0], tri[1][0][1], tri[1][1],
               tri[2][0][0], tri[2][0][1], tri[2][1]))
-    cols_n = 2
-    rows_n = len(ret_tris) // 2
-    if len(ret_tris) % 2 == 1:
-        rows_n += 1
+    cols_n = 3
+    rows_n = int(math.ceil(len(ret_tris) / cols_n))
 
-    fig, axs = plt.subplots(nrows=rows_n, ncols=cols_n, figsize=(8, 12))
+    fig, axs = plt.subplots(nrows=rows_n, ncols=cols_n)
     axs = axs.flatten()
 
     # Color mesh
     for i, curr_ax in enumerate(axs):
-        if i == len(ret_tris):
+        if i == len(iters):
             break
-        verts = [ret_tris[i][j][0] for j in range(3)]
+        verts = [iters[i][1][j][0] for j in range(3)]
         curr_simplex = np.vstack(verts)
         #curr_ax.pcolormesh(X, Y, Z, cmap=cm.jet, norm=LogNorm())
-        curr_ax.contour(X, Y, Z, zdir='z', offset=0, stride=0.1, cmap=cm.coolwarm)
-        curr_ax.set_title("This is simplex for iteration %i" % iterstosee[i])
+        curr_ax.contour(*meshgrid, zdir='z', offset=0, stride=0.1, cmap=cm.coolwarm)
+        curr_ax.set_title("Iteration #%d" % iters[i][0])
         curr_ax.scatter(curr_simplex[:, 0], curr_simplex[:, 1])
-        print('curr ax is %r' % curr_ax)
         curr_ax.add_collection(PolyCollection([verts], facecolor=(1,1,0,0)))
 
     plt.tight_layout()
     plt.show()
 
+def get_function_meshgrid(func, area, num=200):
+    x = np.linspace(*area.x.to_tuple(), num=num)
+    y = np.linspace(*area.y.to_tuple(), num=num)
+
+    X, Y = np.meshgrid(x, y)
+    Z = func([X, Y])
+    return (X, Y, Z)
+
+class CountingFunction(object):
+    def __init__(self, func):
+        self._calls_n = 0
+        self._func = func
+    def __call__(self, *args, **kwargs):
+        self._calls_n += 1
+        return self._func(*args, **kwargs)
+    @property
+    def calls_count(self):
+        return self._calls_n
+    def reset_counter(self):
+        self._calls_n = 0
 
 if __name__ == '__main__':
     def FUNCTION(x):
         x1, x2 = x[0], x[1]
         return 6 * x1 ** 2 + 3 * x2 ** 2 - 4 * x1 * x2 + 4 * math.sqrt(5) * x1 + 8 * math.sqrt(5) * x2 + 22
+    func = CountingFunction(FUNCTION)
     AREA = Area2d(Interval(-7, 4), Interval(-10, 2))
     FIRST_POINT = (-2, 1)
-    #plot_function_3d(FUNCTION, AREA)
-    plot_from_net(FUNCTION, AREA, FIRST_POINT)
+    TOLERANCE = 1e-6
+
+    # calc by our impl
+    func.reset_counter()
+    meshgrid = get_function_meshgrid(func, AREA, num=300)
+    ITERS = [0, 1, 5, 10, 13, 14, 15, 16, 17, 20, 30, 50]
+    func = CountingFunction(FUNCTION)
+    x, fx, its, ret_tris = nelder_mead(func, x0=np.array(FIRST_POINT), tol=TOLERANCE, iter_returns=ITERS)
+    solution = (x[0], x[1], fx)
+    print('Solution by our impl (%.6f, %.6f, %.6f) was found for %d iterations and %d func evaluations' % (solution[0], solution[1], solution[2], its, func.calls_count))
+
+    # calc by library
+    from scipy.optimize import minimize
+    func.reset_counter()
+    res = minimize(func, x0=np.array(FIRST_POINT), method='Nelder-Mead')
+    print('Solution by library function %.6f, %.6f, %.6f) was found for %d iterations and %d func evaluations' % (res.x[0], res.x[1], res.fun, res.nit, func.calls_count))
+
+    #plot_function_and_solution(func, AREA, FIRST_POINT, solution, meshgrid)
+    #plot_iterations(list(zip(ITERS, ret_tris)), meshgrid)
+
